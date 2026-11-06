@@ -1,5 +1,5 @@
 #!/bin/bash
-# ZIVPN UDP + Admin Panel One-Click Installer (Optimized Version)
+# ZIVPN UDP + Admin Panel One-Click Installer (Fixed & BBR Optimized)
 # Port per User System
 # Script Owner By: JueHtet (panel custom)
 set -e
@@ -367,7 +367,12 @@ def api_social():
         if not os.path.exists(SOCIAL_FILE): return jsonify({"telegram": "", "facebook": "", "messenger": "", "icons": {}})
         with open(SOCIAL_FILE, "r") as f:
             data = json.load(f)
-        return jsonify({k: data.get(k, "") for k in ["telegram", "facebook", "messenger"]}, "icons": data.get("icons", {}))
+        return jsonify({
+            "telegram": data.get("telegram", ""),
+            "facebook": data.get("facebook", ""),
+            "messenger": data.get("messenger", ""),
+            "icons": data.get("icons", {})
+        })
     except Exception:
         return jsonify({"telegram": "", "facebook": "", "messenger": "", "icons": {}})
 
@@ -386,7 +391,10 @@ def api_list_users():
 @login_required
 def api_create_user():
     data = request.get_json(silent=True) or request.form
-    username, password, expire_date_str, hwid = (data.get("username") or "").strip(), (data.get("password") or "").strip(), (data.get("expire_date") or "").strip(), (data.get("hwid") or "").strip()
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+    expire_date_str = (data.get("expire_date") or "").strip()
+    hwid = (data.get("hwid") or "").strip()
     if not username or not password: return jsonify({"error": "username and password required"}), 400
     udp_port = allocate_udp_port()
     if udp_port is None: return jsonify({"error": "no free UDP port available"}), 400
@@ -423,51 +431,177 @@ EOF
 chmod +x /usr/local/zivpn-admin/server.py
 
 ########################################
-# 4. FRONTEND INSTALLATION & SYSTEMD
+# 4. FRONTEND INSTALLATION (login.html & index.html)
 ########################################
 echo
 echo "[4/5] Installing Panel UI & Client Files..."
-# (Frontend HTML files remain fully responsive and intact as you provided)
+
+# 1. login.html
 cat << 'EOF' > /usr/local/zivpn-admin/panel/login.html
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>ZIVPN Admin Login</title></head>
-<body style="background:#020617;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;">
-  <div style="background:#0f172a;padding:20px;border-radius:10px;text-align:center;">
-    <h2>ZIVPN Admin Login</h2>
-    <form method="post"><input name="username" placeholder="Username" style="display:block;margin:10px 0;padding:5px;"><input name="password" type="password" placeholder="Password" style="display:block;margin:10px 0;padding:5px;"><button type="submit">Login</button></form>
-  </div>
+<head>
+<meta charset="utf-8">
+<title>ZIVPN Admin Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { font-family: system-ui, -apple-system, sans-serif; }
+body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top, #1f2937 0, #020617 50%, #000 100%); color: #e5e7eb; }
+.card { background: rgba(15,23,42,0.95); border-radius: 18px; padding: 24px 22px; width: 320px; box-shadow: 0 18px 40px rgba(0,0,0,0.7); border: 1px solid rgba(148,163,184,0.35); }
+h1 { margin: 0 0 4px; font-size: 1.4rem; display: flex; align-items: center; gap: 8px; }
+.subtitle { font-size: 0.8rem; color: #9ca3af; margin-bottom: 14px; }
+label { display: block; font-size: 0.75rem; color: #9ca3af; margin-bottom: 4px; }
+input { width: 100%; background: rgba(15,23,42,0.95); border-radius: 10px; border: 1px solid rgba(148,163,184,0.5); padding: 7px 10px; color: #e5e7eb; font-size: 0.85rem; margin-bottom: 10px; box-sizing: border-box; }
+button { width: 100%; margin-top: 4px; padding: 8px 10px; border-radius: 999px; border: none; cursor: pointer; background: linear-gradient(135deg,#22c55e,#0ea5e9,#a855f7); color: #020617; font-weight: 600; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1><span>Admin Login</span></h1>
+  <div class="subtitle">Enter your admin username and password.</div>
+  <form method="post">
+    <label>Username</label>
+    <input name="username" autocomplete="off" required>
+    <label>Password</label>
+    <input name="password" type="password" autocomplete="off" required>
+    <button type="submit">Login</button>
+  </form>
+</div>
 </body>
 </html>
 EOF
 
-cat <<EOF > /etc/systemd/system/zivpn-admin.service
-[Unit]
-Description=ZIVPN Admin Panel (Web UI)
-After=network.target
+# 2. index.html
+cat << 'EOF' > /usr/local/zivpn-admin/panel/index.html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZIVPN Admin Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { font-family: system-ui, -apple-system, sans-serif; }
+body { margin: 0; padding: 0; background: radial-gradient(circle at top, #1f2937 0, #020617 45%, #000 100%); color: #e5e7eb; min-height: 100vh; }
+.container { max-width: 900px; margin: 0 auto; padding: 24px 14px; }
+.card { background: rgba(15,23,42,0.95); border-radius: 18px; padding: 20px 18px; box-shadow: 0 18px 40px rgba(0,0,0,0.7); border: 1px solid rgba(148,163,184,0.35); }
+h1 { font-size: 1.5rem; margin: 0 0 15px; }
+.btn { border-radius: 999px; border: none; padding: 7px 14px; font-size: 0.85rem; cursor: pointer; background: #22c55e; color: #020617; font-weight: 600; text-decoration: none; display: inline-block; }
+.logout { float: right; background: #ef4444; color: #fff; }
+.users-table { width: 100%; margin-top: 15px; border-collapse: collapse; font-size: 0.85rem; }
+.users-table th, .users-table td { border: 1px solid rgba(148,163,184,0.3); padding: 8px; text-align: left; }
+.users-table th { background: rgba(30,41,59,0.9); }
+.form-inline { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px; }
+.form-inline input { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.5); background: #0f172a; color: #fff; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <a href="/logout" class="btn logout">Logout</a>
+    <h1>ZIVPN Admin Dashboard</h1>
+    <div id="server-info">Loading server status...</div>
+    
+    <h3>Create New User</h3>
+    <form class="form-inline" onsubmit="createUser(event)">
+      <input id="username" placeholder="Username" required>
+      <input id="password" placeholder="Password" required>
+      <input id="expire_date" type="date" required>
+      <button class="btn" type="submit">Add User</button>
+    </form>
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/usr/local/zivpn-admin
-ExecStart=/usr/local/zivpn-admin/venv/bin/python3 /usr/local/zivpn-admin/server.py
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
+    <h3>Active Users List</h3>
+    <table class="users-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Password</th>
+          <th>Port</th>
+          <th>Expire Date</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="users-list">
+        <tr><td colspan="5">Loading users...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+function setDefaultDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  document.getElementById('expire_date').value = d.toISOString().split('T')[0];
+}
+async function fetchServer() {
+  const res = await fetch('/api/server');
+  const data = await res.json();
+  document.getElementById('server-info').innerHTML = `<b>VPS IP:</b> ${data.ip} | <b>Panel Port:</b> ${data.panel_port} | <b>UDP Port:</b> ${data.udp_port}`;
+}
+async function fetchUsers() {
+  const res = await fetch('/api/users');
+  const data = await res.json();
+  const tbody = document.getElementById('users-list');
+  tbody.innerHTML = '';
+  if(data.users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5">No users found.</td></tr>';
+    return;
+  }
+  data.users.forEach(u => {
+    tbody.innerHTML += `<tr>
+      <td>${u.username}</td>
+      <td>${u.password}</td>
+      <td>${u.udp_port}</td>
+      <td>${u.expire_at}</td>
+      <td><button class="btn" style="background:#ef4444;padding:3px 8px;font-size:0.75rem;" onclick="deleteUser(${u.id})">Delete</button></td>
+    </tr>`;
+  });
+}
+async function createUser(e) {
+  e.preventDefault();
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const expire_date = document.getElementById('expire_date').value;
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password, expire_date})
+  });
+  const data = await res.json();
+  if(data.success) {
+    alert('User created successfully!');
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    fetchUsers();
+  } else {
+    alert(data.error || 'Failed to create user');
+  }
+}
+async function deleteUser(id) {
+  if(!confirm('Are you sure to delete?')) return;
+  await fetch('/api/users/' + id, {method: 'DELETE'});
+  fetchUsers();
+}
+setDefaultDate();
+fetchServer();
+fetchUsers();
+</script>
+</body>
+</html>
 EOF
 
+########################################
+# SYSTEMD SERVICE RESTART
+########################################
+echo
+echo "[5/5] Restarting Panel Service..."
 systemctl daemon-reload
-systemctl enable zivpn-admin.service
 systemctl restart zivpn-admin.service
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
 echo
 echo -e "${PINK}========================================${NC}"
-echo -e " ${PINK}${BOLD}ZIVPN UDP & Admin Panel Installed (BBR Optimized)${NC}"
-echo -e " ${PINK}(ကျေးဇူးပြုပြီးကျနော့် Script ကိုမခိုးပါနဲ့)${NC}"
+echo -e " ${PINK}${BOLD}ZIVPN UDP & Admin Panel Fixed Successfully${NC}"
 echo -e "${PINK}----------------------------------------${NC}"
 echo -e " ${PINK}VPS IP :${NC} ${SERVER_IP}"
 echo -e " ${PINK}Admin Panel :${NC} http://${SERVER_IP}:8989"
@@ -475,5 +609,4 @@ echo -e " ${PINK}UDP Port :${NC} 5667"
 echo -e "${PINK}----------------------------------------${NC}"
 echo -e " ${PINK}Admin USER :${NC} ${ADMIN_USER}"
 echo -e " ${PINK}Admin PASS :${NC} ${ADMIN_PASS}"
-echo -e " ${PINK}Script Owner By:${NC} JueHtet"
 echo -e "${PINK}========================================${NC}"
